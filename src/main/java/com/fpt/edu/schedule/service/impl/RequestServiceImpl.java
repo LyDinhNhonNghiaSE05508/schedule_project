@@ -64,61 +64,21 @@ public class RequestServiceImpl implements RequestService {
     public void generateExcelFile(MultipartFile multipartFile, int semesterId, String hodGoogleId) {
         try {
             Lecturer lecturer = lecturerService.findByGoogleId(hodGoogleId);
-            String extension = FilenameUtils.getExtension(multipartFile.getOriginalFilename());
+            bindDataFromFile(multipartFile, lecturer);
+            saveTimetable(multipartFile, semesterId, lecturer, false);
 
-            if (!extension.contains("xlsx")) {
-                throw new InvalidRequestException("Wrong file format!");
-            }
-            XSSFWorkbook workbook = new XSSFWorkbook(multipartFile.getInputStream());
-            XSSFSheet sheet = workbook.getSheetAt(0);
-            Iterator<Row> rowIterator = sheet.iterator();
-            rowIterator.next();
-            while (rowIterator.hasNext()) {
-                int column = 0;
-                Row row = rowIterator.next();
-                Iterator<Cell> cellIterator = row.cellIterator();
-                if (isSkip(row, lecturer)) {
-                    continue;
-                }
-                while (cellIterator.hasNext()) {
-                    column++;
-                    Cell cell = cellIterator.next();
-                    if (column == 6) {
-                        break;
-                    }
-                    try {
-                        switch (column) {
-                            case 1:
-                                if (classNameRepository.findByName(cell.getStringCellValue().trim()) != null) {
-                                    break;
-                                }
-                                classNameService.addClassName(new ClassName(cell.getStringCellValue().trim()));
-                                break;
-                            case 2:
-                                if (subjectService.getSubjectByCode(cell.getStringCellValue().trim()) != null) {
-                                    break;
-                                }
-                                subjectService.addSubject(new Subject(cell.getStringCellValue().trim(), row.getCell(3).getStringCellValue()));
-                                break;
-                            case 4:
-                                if (departmentRepository.findByName(cell.getStringCellValue().trim()) != null) {
-                                    break;
-                                }
-                                departmentRepository.save(new Department(cell.getStringCellValue().trim()));
-                                break;
-                            case 5:
-                                if (roomRepo.findByName(cell.getStringCellValue().trim()) != null) {
-                                    break;
-                                }
-                                roomService.addRoom(new Room(cell.getStringCellValue().trim()));
-                                break;
-                        }
-                    } catch (Exception e) {
-                        throw new InvalidRequestException("no");
-                    }
-                }
-            }
-            saveTimetable(multipartFile, semesterId, lecturer);
+        } catch (Exception e) {
+            throw new InvalidRequestException(e.getMessage());
+        }
+    }
+
+    @Transactional
+    @Override
+    public void generateAdditionalExcelFile(MultipartFile multipartFile, int semesterId, String hodGoogleId) {
+        try {
+            Lecturer lecturer = lecturerService.findByGoogleId(hodGoogleId);
+            bindDataFromFile(multipartFile, lecturer);
+            saveTimetable(multipartFile, semesterId, lecturer, true);
 
         } catch (Exception e) {
             throw new InvalidRequestException(e.getMessage());
@@ -150,7 +110,7 @@ public class RequestServiceImpl implements RequestService {
         existedRequest.setStatus(request.getStatus());
         existedRequest.setReplyContent(request.getReplyContent());
         String content = String.format("Lecturer: %s response your request: %s\n\nReply: %s\nStatus: %s\n\nPlease visit %s to view !"
-                ,hod.getEmail(),existedRequest.getContent(),existedRequest.getReplyContent(),existedRequest.getStatus(),Config.domainWebsite);
+                , hod.getEmail(), existedRequest.getContent(), existedRequest.getReplyContent(), existedRequest.getStatus(), Config.domainWebsite);
         String title = "[DSTT SYSTEM] Response Request";
         mailEventPublisher.publishEvent(new Mail(this, content, Arrays.asList(existedRequest.getLecturer().getEmail()), title));
         return requestRepository.save(existedRequest);
@@ -185,7 +145,7 @@ public class RequestServiceImpl implements RequestService {
 
 
     @Override
-    public ByteArrayInputStream exportFile(int semesterId,String groupBy) {
+    public ByteArrayInputStream exportFile(int semesterId, String groupBy) {
         HSSFWorkbook workbook = new HSSFWorkbook();
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         Semester se = semesterRepo.findById(semesterId);
@@ -194,55 +154,61 @@ public class RequestServiceImpl implements RequestService {
         int rowNumber = 0;
         Cell cell;
         Row row;
-        if(groupBy.equals("line")) {
-        list.sort(Comparator.comparing(TimetableDetail::getLineId));
-        row = sheet.createRow(rowNumber);
-        // Class
-        cell = row.createCell(0, CellType.STRING);
-        cell.setCellValue("Class");
-        // EmpName
-        cell = row.createCell(1, CellType.STRING);
-        cell.setCellValue("Subject");
 
-        // Salary
-        cell = row.createCell(2, CellType.STRING);
-        cell.setCellValue("Slot");
-
-        // Grade
-        cell = row.createCell(3, CellType.STRING);
-        cell.setCellValue("Dept");
-
-        // Bonus
-        cell = row.createCell(4, CellType.STRING);
-        cell.setCellValue("Room");
-        cell = row.createCell(5, CellType.STRING);
-        cell.setCellValue("Lecturer");
-
-
-        // Data
-        for (TimetableDetail emp : list) {
-            rowNumber++;
+        //group by line
+        if (groupBy.equals("line")) {
+            list.sort(Comparator.comparing(TimetableDetail::getLineId));
             row = sheet.createRow(rowNumber);
-
-            // EmpNo (A)
+            // Class
             cell = row.createCell(0, CellType.STRING);
-            cell.setCellValue(emp.getClassName().getName());
-            // EmpName (B)
+            cell.setCellValue("Class");
+            // EmpName
             cell = row.createCell(1, CellType.STRING);
-            cell.setCellValue(emp.getSubject().getCode());
-            // Salary (C)
-            cell = row.createCell(2, CellType.STRING);
-            cell.setCellValue(emp.getSlot().getName());
-            // Grade (D)
-            cell = row.createCell(3, CellType.STRING);
-            cell.setCellValue(emp.getSubject().getDepartment());
-            // Bonus (E)
+            cell.setCellValue("Subject");
 
+            // Salary
+            cell = row.createCell(2, CellType.STRING);
+            cell.setCellValue("Slot");
+
+            // Grade
+            cell = row.createCell(3, CellType.STRING);
+            cell.setCellValue("Dept");
+
+            // Bonus
             cell = row.createCell(4, CellType.STRING);
-            cell.setCellValue(emp.getRoom() != null ? emp.getRoom().getName(): "");
+            cell.setCellValue("Room");
             cell = row.createCell(5, CellType.STRING);
-            cell.setCellValue(emp.getLecturer() != null ? emp.getLecturer().getShortName(): "");
-        } } else {
+            cell.setCellValue("Lecturer");
+
+
+            // Data
+            for (TimetableDetail emp : list) {
+                rowNumber++;
+                row = sheet.createRow(rowNumber);
+
+                // EmpNo (A)
+                cell = row.createCell(0, CellType.STRING);
+                cell.setCellValue(emp.getClassName().getName());
+                // EmpName (B)
+                cell = row.createCell(1, CellType.STRING);
+                cell.setCellValue(emp.getSubject().getCode());
+                // Salary (C)
+                cell = row.createCell(2, CellType.STRING);
+                cell.setCellValue(emp.getSlot().getName());
+                // Grade (D)
+                cell = row.createCell(3, CellType.STRING);
+                cell.setCellValue(emp.getSubject().getDepartment());
+                // Bonus (E)
+
+                cell = row.createCell(4, CellType.STRING);
+                cell.setCellValue(emp.getRoom() != null ? emp.getRoom().getName() : "");
+                cell = row.createCell(5, CellType.STRING);
+                cell.setCellValue(emp.getLecturer() != null ? emp.getLecturer().getShortName() : "");
+            }
+        }
+
+        // grouop by teacher
+        else {
             CellStyle cs = workbook.createCellStyle();
             cs.setWrapText(true);
             List<TimetableDetailDTO> timetableDetailDTOS = list.stream()
@@ -345,12 +311,12 @@ public class RequestServiceImpl implements RequestService {
         return new ByteArrayInputStream(out.toByteArray());
     }
 
-        private void setContentForCell(Cell cell,TimetableDetailDTO t,CellStyle cs){
-            cell.setCellValue(t.getRoom() + "\n" + t.getSubjectCode() + "\n" + t.getClassName());
-            cell.setCellStyle(cs);
-        }
-    void saveTimetable(MultipartFile multipartFile, int semesterId,Lecturer lecturer) {
-        try {
+    private void setContentForCell(Cell cell, TimetableDetailDTO t, CellStyle cs) {
+        cell.setCellValue(t.getRoom() + "\n" + t.getSubjectCode() + "\n" + t.getClassName());
+        cell.setCellStyle(cs);
+    }
+
+    void saveTimetable(MultipartFile multipartFile, int semesterId, Lecturer lecturer, boolean isAdditional) throws IOException {
             Semester se = semesterRepo.findById(semesterId);
             XSSFWorkbook workbook = new XSSFWorkbook(multipartFile.getInputStream());
             XSSFSheet sheet = workbook.getSheetAt(0);
@@ -358,9 +324,9 @@ public class RequestServiceImpl implements RequestService {
             rowIterator.next();
             List<Timetable> existedTimetable = timetableRepo.findAllBySemester(se);
 
-            if (existedTimetable.size()>0) {
+            if (existedTimetable.size() > 0 && !isAdditional) {
 
-                existedTimetable.stream().forEach(i->{
+                existedTimetable.stream().forEach(i -> {
                     timetableDetailRepo.deleteAllByTimetable(i.getId());
                     timetableRepo.deleteById(i.getId());
                 });
@@ -371,12 +337,22 @@ public class RequestServiceImpl implements RequestService {
             Timetable timeTableTemp = new Timetable();
             timeTableTemp.setTemp(true);
             int line = 0;
-            int lineTemp =0;
+            int lineTemp = 0;
+            if (isAdditional) {
+                timeTable = timetableRepo.findBySemesterAndTempFalse(semesterRepo.findById(semesterId));
+                if(timeTable == null){
+                    throw new InvalidRequestException("Please upload data of semester first!");
+                }
+                timeTableTemp = timetableRepo.findBySemesterAndTempTrue(semesterRepo.findById(semesterId));
+                TimetableDetail timetableDetail = timetableDetailRepo.findFirstByTimetableOrderByLineIdDesc(timeTable);
+                line = timetableDetail.getLineId();
+                lineTemp = timetableDetail.getLineId();
+            }
             while (rowIterator.hasNext()) {
                 int column = 0;
 
                 Row row = rowIterator.next();
-                if (isSkip(row,lecturer)) {
+                if (isSkip(row, lecturer)) {
                     continue;
                 }
                 Iterator<Cell> cellIterator = row.cellIterator();
@@ -426,16 +402,66 @@ public class RequestServiceImpl implements RequestService {
             }
             timetableRepo.save(timeTableTemp);
             timetableRepo.save(timeTable);
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
     }
-    private boolean isSkip(Row row,Lecturer lecturer){
+
+    private boolean isSkip(Row row, Lecturer lecturer) {
         Cell cell = row.getCell(6);
-        if (!row.getCell(3).getStringCellValue().equalsIgnoreCase(lecturer.getDepartment()) ||cell!= null ) {
+        if (!row.getCell(3).getStringCellValue().equalsIgnoreCase(lecturer.getDepartment()) || cell != null) {
             return true;
         }
         return false;
     }
 
+    private void bindDataFromFile(MultipartFile multipartFile, Lecturer lecturer) throws IOException {
+        String extension = FilenameUtils.getExtension(multipartFile.getOriginalFilename());
+        if (!extension.contains("xlsx")) {
+            throw new InvalidRequestException("Wrong file format!");
+        }
+        XSSFWorkbook workbook = new XSSFWorkbook(multipartFile.getInputStream());
+        XSSFSheet sheet = workbook.getSheetAt(0);
+        Iterator<Row> rowIterator = sheet.iterator();
+        rowIterator.next();
+        while (rowIterator.hasNext()) {
+            int column = 0;
+            Row row = rowIterator.next();
+            Iterator<Cell> cellIterator = row.cellIterator();
+            if (isSkip(row, lecturer)) {
+                continue;
+            }
+            while (cellIterator.hasNext()) {
+                column++;
+                Cell cell = cellIterator.next();
+                if (column == 6) {
+                    break;
+                }
+                    switch (column) {
+                        case 1:
+                            if (classNameRepository.findByName(cell.getStringCellValue().trim()) != null) {
+                                break;
+                            }
+                            classNameService.addClassName(new ClassName(cell.getStringCellValue().trim()));
+                            break;
+                        case 2:
+                            if (subjectService.getSubjectByCode(cell.getStringCellValue().trim()) != null) {
+                                break;
+                            }
+                            subjectService.addSubject(new Subject(cell.getStringCellValue().trim(), row.getCell(3).getStringCellValue()));
+                            break;
+                        case 4:
+                            if (departmentRepository.findByName(cell.getStringCellValue().trim()) != null) {
+                                break;
+                            }
+                            departmentRepository.save(new Department(cell.getStringCellValue().trim()));
+                            break;
+                        case 5:
+                            if (roomRepo.findByName(cell.getStringCellValue().trim()) != null) {
+                                break;
+                            }
+                            roomService.addRoom(new Room(cell.getStringCellValue().trim()));
+                            break;
+                    }
+
+            }
+        }
+    }
 }

@@ -21,7 +21,7 @@ public interface TimetableDetailRepository extends Repository<TimetableDetail, I
     @Query(value = "DELETE FROM timetabledetail\n" +
             "    WHERE lecturer_id =?1  ", nativeQuery = true)
     void deleteByLecturer(int lecturerId);
-
+    TimetableDetail findFirstByTimetableOrderByLineIdDesc(Timetable timetable);
 
     List<TimetableDetail> findAllByLecturerAndTimetable(Lecturer lecturer, Timetable timetable);
 

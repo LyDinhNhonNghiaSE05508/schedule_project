@@ -28,12 +28,19 @@ public class RequestController {
             requestService.generateExcelFile(multipartFile,semesterId,hodGoogleId);
             return new ResponseEntity(HttpStatus.OK);
     }
+
+    @PostMapping("/generateAdditional")
+    public ResponseEntity generateAdditionalFile(@RequestParam("file") MultipartFile multipartFile,
+                                       @RequestParam(name = "semesterId") int semesterId,
+                                       @RequestHeader("GoogleId") String hodGoogleId) {
+        requestService.generateAdditionalExcelFile(multipartFile,semesterId,hodGoogleId);
+        return new ResponseEntity(HttpStatus.OK);
+    }
+
     @PostMapping("/export")
     public ResponseEntity exportExcel(@RequestParam(name = "semesterId") int semesterId,
                                       @RequestParam(name = "groupBy") String groupBy) {
         ByteArrayInputStream in = requestService.exportFile(semesterId,groupBy);
-        // return IOUtils.toByteArray(in);
-
         HttpHeaders headers = new HttpHeaders();
         headers.add("Content-Disposition", "attachment; filename=timetable.xlsx");
 

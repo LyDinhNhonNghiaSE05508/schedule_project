@@ -9,6 +9,8 @@ import java.io.ByteArrayInputStream;
 public interface RequestService {
     void generateExcelFile(MultipartFile multipartFile, int semesterId,String hodGoogleId);
 
+    void generateAdditionalExcelFile(MultipartFile multipartFile, int semesterId,String hodGoogleId);
+
     Request addRequest(Request request, String lecturerId);
 
     Request updateRequest(Request request,String lecturerId);
